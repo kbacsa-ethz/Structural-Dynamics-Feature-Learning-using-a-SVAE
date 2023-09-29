@@ -1,0 +1,1 @@
+# Structural-Dynamics-Feature-Learning-using-a-SVAE
