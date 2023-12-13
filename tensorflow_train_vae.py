@@ -5,34 +5,12 @@ import tensorflow as tf
 physical_devices = tf.config.list_physical_devices('GPU')
 print("Num GPUs Available: ", len(physical_devices))
 tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
-from tfrecords_loader import decode_fn
+from tfrecords_loader import decode_fn, mask_data_along_second_dim
 from tensorflow_autoencoders import AE, VAE, AnnealingCallback
 from tflite_exporter import export_model
 
 
 def main(cfg):
-
-    def mask_data_along_second_dim(y_true):
-        mask_ratio = 0.5  # Adjust the probability as needed
-        # Get the shape of the tensor
-        tensor_shape = tf.shape(y_true)
-
-        # Define the portion of the 2nd axis to be zeroed out
-        portion_to_zero = tf.random.uniform(shape=[],
-                                            minval=tf.cast(tf.cast(tensor_shape[1], tf.float32) * (1 - mask_ratio), tf.int32),
-                                            maxval=tensor_shape[1],
-                                            dtype=tf.int32
-                                            )
-        # Create a mask to zero out the portion
-        mask = tf.concat([
-            tf.ones([tensor_shape[0], tensor_shape[1] - portion_to_zero, tensor_shape[2]], dtype=y_true.dtype),
-            tf.zeros([tensor_shape[0], portion_to_zero, tensor_shape[2]], dtype=y_true.dtype)
-        ], axis=1)
-
-        # Apply the mask to zero out the portion
-        y_masked = y_true * mask
-        return y_masked
-
 
     train_dataset = (tf.data.TFRecordDataset([os.path.join('train_dataset', 'tf_dataset')]).map(decode_fn).map(lambda x: mask_data_along_second_dim(x)))
     val_dataset = (tf.data.TFRecordDataset([os.path.join('val_dataset', 'tf_dataset')]).map(decode_fn))

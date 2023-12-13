@@ -77,6 +77,28 @@ def decode_fn(recorded_bytes):
     return tf.reshape(accelerations, [1, 300, 4])
 
 
+def mask_data_along_second_dim(y_true):
+    mask_ratio = 0.5  # Adjust the probability as needed
+    # Get the shape of the tensor
+    tensor_shape = tf.shape(y_true)
+
+    # Define the portion of the 2nd axis to be zeroed out
+    portion_to_zero = tf.random.uniform(shape=[],
+                                        minval=tf.cast(tf.cast(tensor_shape[1], tf.float32) * (1 - mask_ratio), tf.int32),
+                                        maxval=tensor_shape[1],
+                                        dtype=tf.int32
+                                        )
+    # Create a mask to zero out the portion
+    mask = tf.concat([
+        tf.ones([tensor_shape[0], tensor_shape[1] - portion_to_zero, tensor_shape[2]], dtype=y_true.dtype),
+        tf.zeros([tensor_shape[0], portion_to_zero, tensor_shape[2]], dtype=y_true.dtype)
+    ], axis=1)
+
+    # Apply the mask to zero out the portion
+    y_masked = y_true * mask
+    return y_masked
+
+
 if __name__ == '__main__':
     n_dof = 4
     for lmdb_path in ['train_dataset', 'val_dataset', 'test_dataset']:
