@@ -40,6 +40,7 @@ def export_model(model, steps, input_size, save_path, calibrate_dataset):
     input_scale, input_zero_point = input_details[0]['quantization']
     output_scale, output_zero_point = output_details[0]['quantization']
 
+    errors = []
     for x_test in calibrate_dataset.take(dataset_size):
         x_data, x_label = x_test
         expected = model(x_data)
@@ -49,13 +50,12 @@ def export_model(model, steps, input_size, save_path, calibrate_dataset):
         result_quant = interpreter.get_tensor(output_details[0]["index"])
         result = ((result_quant - output_zero_point) * output_scale).astype(float)
 
-        # Assert if the result of TFLite model is consistent with the TF model.
-        try:
-            np.testing.assert_almost_equal(expected, result, decimal=2)
-        except Exception as e:
-            print(e)
+        relative_error = 100 * np.abs(expected - result) / (0.5 * (np.abs(expected) + np.abs(result)))
+        errors.append(relative_error)
 
         # Please note: TfLite fused Lstm kernel is stateful, so we need to reset
         # the states.
         # Clean up internal states.
         interpreter.reset_all_variables()
+
+    print("Error is {:.2f}%".format(np.mean(errors)))
