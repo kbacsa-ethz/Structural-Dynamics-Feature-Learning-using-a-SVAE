@@ -18,7 +18,8 @@ def export_model(model, steps, input_size, save_path, calibrate_dataset):
 
     def data_generator():
         for sample in calibrate_dataset.take(dataset_size):
-            yield [sample]
+            data, label = sample
+            yield [data]
 
     converter.representative_dataset = data_generator
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
@@ -40,8 +41,9 @@ def export_model(model, steps, input_size, save_path, calibrate_dataset):
     output_scale, output_zero_point = output_details[0]['quantization']
 
     for x_test in calibrate_dataset.take(dataset_size):
-        expected = model(x_test)
-        x_test_quant = np.int8(x_test / input_scale + input_zero_point)
+        x_data, x_label = x_test
+        expected = model(x_data)
+        x_test_quant = np.int8(x_data / input_scale + input_zero_point)
         interpreter.set_tensor(input_details[0]["index"], x_test_quant)
         interpreter.invoke()
         result_quant = interpreter.get_tensor(output_details[0]["index"])

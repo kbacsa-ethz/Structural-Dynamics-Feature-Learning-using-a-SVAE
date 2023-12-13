@@ -74,10 +74,10 @@ def decode_fn(recorded_bytes):
     }
     """
 
-    return tf.reshape(accelerations, [1, 300, 4])
+    return tf.reshape(accelerations, [1, 300, 4]), parsed_example['label']
 
 
-def mask_data_along_second_dim(y_true):
+def mask_data_along_second_dim(y_true, label):
     mask_ratio = 0.5  # Adjust the probability as needed
     # Get the shape of the tensor
     tensor_shape = tf.shape(y_true)
@@ -96,7 +96,7 @@ def mask_data_along_second_dim(y_true):
 
     # Apply the mask to zero out the portion
     y_masked = y_true * mask
-    return y_masked
+    return y_masked, label
 
 
 if __name__ == '__main__':

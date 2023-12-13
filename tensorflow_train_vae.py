@@ -6,13 +6,13 @@ physical_devices = tf.config.list_physical_devices('GPU')
 print("Num GPUs Available: ", len(physical_devices))
 tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 from tfrecords_loader import decode_fn, mask_data_along_second_dim
-from tensorflow_autoencoders import AE, VAE, AnnealingCallback
+from tensorflow_autoencoders import AE, VAE, SVAE, AnnealingCallback
 from tflite_exporter import export_model
 
 
 def main(cfg):
 
-    train_dataset = (tf.data.TFRecordDataset([os.path.join('train_dataset', 'tf_dataset')]).map(decode_fn).map(lambda x: mask_data_along_second_dim(x)))
+    train_dataset = (tf.data.TFRecordDataset([os.path.join('train_dataset', 'tf_dataset')]).map(decode_fn).map(lambda x, y: mask_data_along_second_dim(x, y)))
     val_dataset = (tf.data.TFRecordDataset([os.path.join('val_dataset', 'tf_dataset')]).map(decode_fn))
     test_dataset = (tf.data.TFRecordDataset([os.path.join('test_dataset', 'tf_dataset')]).map(decode_fn))
 
@@ -38,6 +38,16 @@ def main(cfg):
             num_layers=cfg.num_layers,
             seq_len=cfg.seq_len,
             dropout=cfg.dropout,
+        )
+        callbacks.append(AnnealingCallback("kl_beta", cfg.annealing_epochs))
+    elif cfg.model_type == 'svae':
+        model = SVAE(
+            input_dim=cfg.in_channels,
+            latent_dim=cfg.latent_dim,
+            num_layers=cfg.num_layers,
+            seq_len=cfg.seq_len,
+            dropout=cfg.dropout,
+            num_classes=cfg.n_classes,
         )
         callbacks.append(AnnealingCallback("kl_beta", cfg.annealing_epochs))
     else:
@@ -92,7 +102,7 @@ if __name__ == '__main__':
     parser.add_argument('--class-layers', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.2)
     parser.add_argument('--extractor', type=str, default='lstm')
-    parser.add_argument('--model-type', type=str, default='vae')
+    parser.add_argument('--model-type', type=str, default='svae')
     parser.add_argument('--target', type=str, default='accelerations')
 
     # Training parameters

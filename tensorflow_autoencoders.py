@@ -38,7 +38,8 @@ class AE(tf.keras.Model):
         decoded = self.decoder(encoded)
         return encoded, decoded
 
-    def train_step(self, data):
+    def train_step(self, x):
+        data, label = x
         with tf.GradientTape() as tape:
             latent, reconstruction = self.call(data)
             reconstruction_loss = tf.reduce_mean((data - reconstruction) ** 2)
@@ -49,7 +50,8 @@ class AE(tf.keras.Model):
             "reconstruction_loss": self.total_loss_tracker.result(),
         }
 
-    def test_step(self, data):
+    def test_step(self, x):
+        data, label = x
         latent, reconstruction = self.call(data)
         reconstruction_loss = tf.reduce_mean((data - reconstruction) ** 2)
         self.total_loss_tracker.update_state(reconstruction_loss)
@@ -133,7 +135,8 @@ class VAE(tf.keras.Model):
         reconstruction = self.decoder(z)
         return mean, logvar, reconstruction
 
-    def train_step(self, data):
+    def train_step(self, x):
+        data, label = x
         with tf.GradientTape() as tape:
             mean, logvar, reconstruction = self.call(data)
             reconstruction_loss = tf.reduce_mean((data - reconstruction) ** 2)
@@ -151,7 +154,8 @@ class VAE(tf.keras.Model):
             "kl_loss": self.kl_loss_tracker.result(),
         }
 
-    def test_step(self, data):
+    def test_step(self, x):
+        data, label = x
         mean, logvar, reconstruction = self.call(data)
         reconstruction_loss = tf.reduce_mean((data - reconstruction) ** 2)
         kl_loss = -0.5 * (1 + logvar - tf.square(mean) - tf.exp(logvar))
@@ -165,3 +169,93 @@ class VAE(tf.keras.Model):
             "reconstruction_loss": self.reconstruction_loss_tracker.result(),
             "kl_loss": self.kl_loss_tracker.result(),
         }
+
+
+class SVAE(VAE):
+    """Variational autoencoder."""
+    def __init__(self, input_dim, latent_dim, num_layers, seq_len, dropout, num_classes):
+        super(SVAE, self).__init__(input_dim, latent_dim, num_layers, seq_len, dropout)
+
+        self.num_classes = num_classes
+
+        self.classifier = tf.keras.Sequential()
+        self.classifier.add(tf.keras.layers.InputLayer(input_shape=(seq_len, latent_dim + latent_dim)))
+        self.classifier.add(tf.keras.layers.LSTM(1, return_sequences=True, dropout=dropout))
+        self.classifier.add(tf.keras.layers.Flatten())
+        self.classifier.add(tf.keras.layers.Dense(num_classes))
+
+        self.class_loss_tracker = tf.keras.metrics.Mean(name="class_loss")
+        self.bce = tf.keras.losses.BinaryCrossentropy()
+
+
+    @property
+    def metrics(self):
+        return [
+            self.total_loss_tracker,
+            self.reconstruction_loss_tracker,
+            self.kl_loss_tracker,
+            self.class_loss_tracker,
+        ]
+
+    def classify(self, mean, logvar):
+        classifier_input = tf.concat([mean, logvar], axis=2)
+        logits = self.classifier(classifier_input)
+        return logits
+
+    @tf.function
+    def call(self, x):
+        mean, logvar = self.encode(x)
+        logits = self.classify(mean, logvar)
+        z = self.reparameterize(mean, logvar)
+        reconstruction = self.decoder(z)
+        return mean, logvar, logits, reconstruction
+
+    def train_step(self, x):
+        data, label = x
+        with tf.GradientTape() as tape:
+            mean, logvar, logits, reconstruction = self.call(data)
+            reconstruction_loss = tf.reduce_mean((data - reconstruction) ** 2)
+
+            # binary cross-entropy
+            label_one_hot = tf.one_hot(label, self.num_classes)
+            class_loss = self.bce(label_one_hot, logits)
+
+            kl_loss = -0.5 * (1 + logvar - tf.square(mean) - tf.exp(logvar))
+            kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+            total_loss = reconstruction_loss + self.kl_beta * kl_loss + class_loss
+        grads = tape.gradient(total_loss, self.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+        self.total_loss_tracker.update_state(total_loss)
+        self.reconstruction_loss_tracker.update_state(reconstruction_loss)
+        self.kl_loss_tracker.update_state(kl_loss)
+        self.class_loss_tracker.update_state(class_loss)
+        return {
+            "loss": self.total_loss_tracker.result(),
+            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+            "kl_loss": self.kl_loss_tracker.result(),
+            "class_loss": self.class_loss_tracker.result(),
+        }
+
+    def test_step(self, x):
+        data, label = x
+        mean, logvar, logits, reconstruction = self.call(data)
+        reconstruction_loss = tf.reduce_mean((data - reconstruction) ** 2)
+
+        # binary cross-entropy
+        label_one_hot = tf.one_hot(label, self.num_classes)
+        class_loss = self.bce(label_one_hot, logits)
+
+        kl_loss = -0.5 * (1 + logvar - tf.square(mean) - tf.exp(logvar))
+        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+        total_loss = reconstruction_loss + self.kl_beta * kl_loss + class_loss
+        self.total_loss_tracker.update_state(total_loss)
+        self.reconstruction_loss_tracker.update_state(reconstruction_loss)
+        self.kl_loss_tracker.update_state(kl_loss)
+        self.class_loss_tracker.update_state(class_loss)
+        return {
+            "loss": self.total_loss_tracker.result(),
+            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+            "kl_loss": self.kl_loss_tracker.result(),
+            "class_loss": self.class_loss_tracker.result(),
+        }
+
