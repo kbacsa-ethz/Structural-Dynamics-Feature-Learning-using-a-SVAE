@@ -16,7 +16,6 @@ class AE(tf.keras.Model):
         self.encoder.add(tf.keras.layers.InputLayer(input_shape=(seq_len, input_dim)))
         for _ in range(num_layers):
             self.encoder.add(tf.keras.layers.LSTM(self.latent_dim, return_sequences=True, dropout=dropout))
-        self.encoder.add(tf.keras.layers.Dense(latent_dim))
 
         self.decoder = tf.keras.Sequential()
         self.decoder.add(tf.keras.layers.InputLayer(input_shape=(seq_len, latent_dim)))
@@ -24,7 +23,13 @@ class AE(tf.keras.Model):
             self.decoder.add(tf.keras.layers.LSTM(self.latent_dim, return_sequences=True, dropout=dropout))
         self.decoder.add(tf.keras.layers.Dense(input_dim))
 
-        self.total_loss_tracker = tf.keras.metrics.Mean(name="reconstruction_loss")
+        self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
+
+    @property
+    def metrics(self):
+        return [
+            self.total_loss_tracker,
+        ]
 
     def encode(self, x):
         return self.encoder(x)
@@ -47,7 +52,7 @@ class AE(tf.keras.Model):
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
         self.total_loss_tracker.update_state(reconstruction_loss)
         return {
-            "reconstruction_loss": self.total_loss_tracker.result(),
+            "total_loss": self.total_loss_tracker.result(),
         }
 
     def test_step(self, x):
@@ -56,7 +61,7 @@ class AE(tf.keras.Model):
         reconstruction_loss = tf.reduce_mean((data - reconstruction) ** 2)
         self.total_loss_tracker.update_state(reconstruction_loss)
         return {
-            "reconstruction_loss": self.total_loss_tracker.result(),
+            "total_loss": self.total_loss_tracker.result(),
         }
 
 
@@ -78,34 +83,18 @@ class AnnealingCallback(tf.keras.callbacks.Callback):
         return new_value
 
 
-class VAE(tf.keras.Model):
+class VAE(AE):
     """Variational autoencoder."""
+
     def __init__(self, input_dim, latent_dim, num_layers, seq_len, dropout):
-        super(VAE, self).__init__()
-        self.input_dim = input_dim
-        self.latent_dim = latent_dim
-        self.num_layers = num_layers
-        self.seq_len = seq_len
-        self.dropout = dropout
+        super(VAE, self).__init__(input_dim, latent_dim, num_layers, seq_len, dropout)
         self.kl_beta = 0.
-
-        self.encoder = tf.keras.Sequential()
-        self.encoder.add(tf.keras.layers.InputLayer(input_shape=(seq_len, input_dim)))
-        for _ in range(num_layers):
-            self.encoder.add(tf.keras.layers.LSTM(self.latent_dim, return_sequences=True, dropout=dropout))
-        self.encoder.add(tf.keras.layers.Dense(latent_dim + latent_dim))
-
-        self.decoder = tf.keras.Sequential()
-        self.decoder.add(tf.keras.layers.InputLayer(input_shape=(seq_len, latent_dim)))
-        for _ in range(num_layers):
-            self.decoder.add(tf.keras.layers.LSTM(self.latent_dim, return_sequences=True, dropout=dropout))
-        self.decoder.add(tf.keras.layers.Dense(input_dim))
-
-        self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
         self.reconstruction_loss_tracker = tf.keras.metrics.Mean(
             name="reconstruction_loss"
         )
         self.kl_loss_tracker = tf.keras.metrics.Mean(name="kl_loss")
+
+        self.encoder.add(tf.keras.layers.Dense(latent_dim + latent_dim))
 
     @property
     def metrics(self):
@@ -122,7 +111,7 @@ class VAE(tf.keras.Model):
     def sample(self, eps=None):
         if eps is None:
             eps = tf.random.normal(shape=(100, self.latent_dim))
-        return self.decode(eps, apply_sigmoid=True)
+        return self.decode(eps)
 
     def reparameterize(self, mean, logvar):
         eps = tf.random.normal(shape=mean.shape)
@@ -173,6 +162,7 @@ class VAE(tf.keras.Model):
 
 class SVAE(VAE):
     """Variational autoencoder."""
+
     def __init__(self, input_dim, latent_dim, num_layers, seq_len, dropout, num_classes):
         super(SVAE, self).__init__(input_dim, latent_dim, num_layers, seq_len, dropout)
 
@@ -186,7 +176,6 @@ class SVAE(VAE):
 
         self.class_loss_tracker = tf.keras.metrics.Mean(name="class_loss")
         self.bce = tf.keras.losses.BinaryCrossentropy()
-
 
     @property
     def metrics(self):
@@ -258,4 +247,3 @@ class SVAE(VAE):
             "kl_loss": self.kl_loss_tracker.result(),
             "class_loss": self.class_loss_tracker.result(),
         }
-

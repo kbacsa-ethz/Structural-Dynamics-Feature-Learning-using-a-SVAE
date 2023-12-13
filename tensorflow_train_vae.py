@@ -11,7 +11,6 @@ from tflite_exporter import export_model
 
 
 def main(cfg):
-
     train_dataset = (tf.data.TFRecordDataset([os.path.join('train_dataset', 'tf_dataset')]).map(decode_fn).map(lambda x, y: mask_data_along_second_dim(x, y)))
     val_dataset = (tf.data.TFRecordDataset([os.path.join('val_dataset', 'tf_dataset')]).map(decode_fn))
     test_dataset = (tf.data.TFRecordDataset([os.path.join('test_dataset', 'tf_dataset')]).map(decode_fn))
@@ -30,7 +29,6 @@ def main(cfg):
             seq_len=cfg.seq_len,
             dropout=cfg.dropout,
         )
-
     elif cfg.model_type == 'vae':
         model = VAE(
             input_dim=cfg.in_channels,
