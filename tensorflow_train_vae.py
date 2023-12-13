@@ -72,8 +72,16 @@ def main(cfg):
         callbacks=callbacks,
     )
 
+    # design export model
+    model_to_export = tf.keras.Sequential()
+    model_to_export.add(tf.keras.layers.InputLayer(input_shape=(cfg.seq_len, cfg.in_channels)))
+    model_to_export.add(model.encoder)
+    if cfg.model_type == 'svae':
+        model_to_export.add(model.classifier)
+
+    # convert model to tflite
     export_model(
-        model.encoder,
+        model_to_export,
         cfg.seq_len,
         cfg.in_channels,
         os.path.join(cfg.data_path, cfg.save_dir),
@@ -107,7 +115,7 @@ if __name__ == '__main__':
 
     # Training parameters
     parser.add_argument('--batch-size', type=int, default=256)
-    parser.add_argument('--n-epochs', type=int, default=5)
+    parser.add_argument('--n-epochs', type=int, default=2)
     parser.add_argument('--annealing-epochs', type=int, default=100)
     parser.add_argument('--learning-rate', type=float, default=1e-3)
     parser.add_argument('--class-weight', type=float, default=1e1)
