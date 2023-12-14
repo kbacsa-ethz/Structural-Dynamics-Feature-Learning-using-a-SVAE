@@ -34,6 +34,8 @@ def serialize_dict(input_dict):
         'force': _bytes_feature(input_dict['force']),
         'flexibility': _float_feature(input_dict['flexibility']),
         'label': _int64_feature(input_dict['label']),
+        'sequence_length': _int64_feature(input_dict['sequence_length']),
+        'n_dof': _int64_feature(input_dict['n_dof']),
     }
 
     # Create a Features message using tf.train.Example.
@@ -55,6 +57,8 @@ def decode_fn(recorded_bytes):
             "force": tf.io.FixedLenFeature([], dtype=tf.string),
             "flexibility": tf.io.FixedLenFeature([], dtype=tf.float32),
             "label": tf.io.FixedLenFeature([], dtype=tf.int64),
+            "sequence_length": tf.io.FixedLenFeature([], dtype=tf.int64),
+            "n_dof": tf.io.FixedLenFeature([], dtype=tf.int64),
         }
     )
 
@@ -74,7 +78,7 @@ def decode_fn(recorded_bytes):
     }
     """
 
-    return tf.reshape(accelerations, [1, 300, 4]), parsed_example['label']
+    return tf.reshape(accelerations, [1, parsed_example['sequence_length'], parsed_example['n_dof']]), parsed_example['label']
 
 
 def mask_data_along_second_dim(y_true, label):
@@ -108,10 +112,13 @@ if __name__ == '__main__':
         with tf.io.TFRecordWriter(os.path.join(lmdb_path, 'tf_dataset')) as file_writer:
             for i in range(len(lmdb_dataset)):
                 output = lmdb_dataset[i]
+                disp = output['displacements']
+                output['sequence_length'] = disp.shape[0]
+                output['n_dof'] = disp.shape[1]
                 record_bytes = serialize_dict(output)
                 file_writer.write(record_bytes)
 
     # test that data can be recovered
     dataset = tf.data.TFRecordDataset([os.path.join('train_dataset', 'tf_dataset')]).map(decode_fn)
     for raw_record in dataset.take(1):
-        print(raw_record['flexibility'])
+        print(raw_record)
