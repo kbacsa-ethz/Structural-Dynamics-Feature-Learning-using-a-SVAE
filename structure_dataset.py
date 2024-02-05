@@ -44,6 +44,8 @@ class StructureDataset(BaseDataset):
             # Fetch data from LMDB for the given index
             states = np.array(pa.deserialize(txn.get('states_{}'.format(self.keys[index]).encode('ascii')))).astype(
                 np.float32)
+            observations = np.array(pa.deserialize(txn.get('observations_{}'.format(self.keys[index]).encode('ascii')))).astype(
+                np.float32)
             force = pa.deserialize(txn.get('force_{}'.format(self.keys[index]).encode('ascii'))).astype(np.float32)
             label = pa.deserialize(txn.get('label_{}'.format(self.keys[index]).encode('ascii')))
             flexibility = pa.deserialize(txn.get('flexibility_{}'.format(self.keys[index]).encode('ascii')))
@@ -53,6 +55,9 @@ class StructureDataset(BaseDataset):
             "displacements": states[:, :self.n_dof],
             "velocities": states[:, self.n_dof:2 * self.n_dof],
             "accelerations": states[:, 2 * self.n_dof:3 * self.n_dof],
+            "displacements-obs": observations[:, :self.n_dof],
+            "velocities-obs": observations[:, self.n_dof:2 * self.n_dof],
+            "accelerations-obs": observations[:, 2 * self.n_dof:3 * self.n_dof],
             "force": force,
             "flexibility": flexibility,
             "label": label
