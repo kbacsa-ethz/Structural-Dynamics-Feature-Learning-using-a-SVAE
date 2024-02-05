@@ -118,6 +118,17 @@ def main(cfg):
             cfg.class_weight,
             torch.nn.BCEWithLogitsLoss(reduction='sum')
         )
+    elif model_hyperparameters['model_type'] == 'classifier':
+        Trainer = TrainerClassifier(
+            model,
+            model_hyperparameters,
+            cfg.learning_rate,
+            cfg.learning_decay,
+            cfg.weight_decay,
+            save_path,
+            cfg.n_classes,
+            torch.nn.BCEWithLogitsLoss(reduction='sum')
+        )
     else:
         raise NotImplementedError("Model type not implemented")
 
@@ -169,7 +180,7 @@ if __name__ == '__main__':
     parser.add_argument('--class-layers', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.2)
     parser.add_argument('--extractor', type=str, default='lstm')
-    parser.add_argument('--model-type', type=str, default='vae')
+    parser.add_argument('--model-type', type=str, default='classifier')
     parser.add_argument('--target', type=str, default='accelerations-obs')
 
     # Training parameters

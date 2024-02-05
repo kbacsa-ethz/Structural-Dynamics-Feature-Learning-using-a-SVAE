@@ -357,3 +357,59 @@ class TrainerSVAE(TrainerVAE):
         loss_dict['ACCURACY'] = accuracy
         loss_dict['CONF_MATRIX'] = confusion_matrix
         return loss_dict
+
+
+# Define TrainerSVAE class, a subclass of TrainerVAE for Supervised Variational Autoencoders (SVAE)
+class TrainerClassifier(Train):
+    def __init__(self,
+                 model,
+                 model_hyper,
+                 learning_rate,
+                 learning_decay,
+                 weight_decay,
+                 save_path,
+                 n_classes,
+                 class_criterion
+                 ):
+        super(TrainerClassifier, self).__init__(model,
+                                                model_hyper,
+                                                learning_rate,
+                                                learning_decay,
+                                                weight_decay,
+                                                save_path,
+                                                )
+        self.n_classes = n_classes
+        self.class_criterion = class_criterion
+
+    def get_data(self, sample):
+        data = sample[self.model_hyper['target']].float()
+        labels = sample['label'].float()
+        data = data.to(self.device)
+        labels = labels.to(self.device)
+        return data, labels
+
+    def calculate_loss(self, input_tuple):
+        inputs, labels = input_tuple
+        loss_dict = {}
+
+        # Convert labels to one-hot encoded format
+        labels = torch.nn.functional.one_hot(labels.long(), self.n_classes).float()
+        preds_labels_score = self.model(inputs)
+        class_loss = self.class_criterion(preds_labels_score, labels)
+
+        # Accuracy monitoring
+        pred_labels = torch.argmax(preds_labels_score.squeeze(), dim=-1, keepdim=True)
+        ground_labels = torch.argmax(labels, dim=-1, keepdim=True)
+        accuracy = torch.sum(pred_labels == ground_labels) * ground_labels.size(0)
+
+        # Confusion matrix
+        confusion_matrix = torch.zeros(self.n_classes, self.n_classes)
+        for t, p in zip(ground_labels.view(-1), pred_labels.view(-1)):
+            confusion_matrix[t.long(), p.long()] += 1
+
+        loss = class_loss
+        loss_dict['TOTAL_LOSS'] = loss
+        loss_dict['CLASS_LOSS'] = class_loss
+        loss_dict['ACCURACY'] = accuracy
+        loss_dict['CONF_MATRIX'] = confusion_matrix
+        return loss_dict

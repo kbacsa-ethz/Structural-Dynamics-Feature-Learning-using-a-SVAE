@@ -112,3 +112,23 @@ class SVAE(VAE):
 
     def classify(self, x):
         return self.classifier(x)
+
+
+class Classifier(nn.Module):
+    def __init__(self, encoder, latent_dim, class_layers, n_classes, seq_len):
+        super(Classifier, self).__init__()
+
+        self.encoder = encoder
+        self.classifier = nn.Sequential(
+            RNNSingleOutputNoMask(latent_dim, 1, 2, 0.2),
+            nn.Flatten(),
+            *list(itertools.chain.from_iterable(
+                [[nn.Linear(in_features=seq_len, out_features=seq_len), nn.ReLU()] for _ in range(class_layers)])),
+            nn.Dropout(0.5),
+            nn.Linear(in_features=seq_len, out_features=n_classes)
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.classifier(x)
+        return x

@@ -45,6 +45,8 @@ def model_from_name(name, seq_len, batch_size):
         from_name = CVAE(encoder, decoder, latent_dim, n_classes, seq_len)
     elif model_type == 'svae':
         from_name = SVAE(encoder, decoder, latent_dim, class_layers, n_classes, seq_len)
+    elif model_type == 'classifier':
+        from_name = Classifier(encoder, latent_dim, class_layers, n_classes, seq_len)
     else:
         raise NotImplemented
 
