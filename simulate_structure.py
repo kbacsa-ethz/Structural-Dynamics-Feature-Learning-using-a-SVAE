@@ -3,6 +3,7 @@ import lmdb
 import random
 import numpy as np
 import pyarrow as pa
+from scipy.signal import detrend
 from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 
@@ -65,6 +66,7 @@ n_iterations = {
 
 abserr = 1e-8
 relerr = 1e-6
+signal_snr = 10  # [dB]
 
 # Construct linear system matrices
 n_classes = 6
@@ -193,8 +195,21 @@ for phase in phases:
         label = damage_class
 
         # Negative mining: set state to zeros with a low probability
+        observations = state.copy()
         if random.random() < 0.05:
             state = np.zeros_like(state)
+            observations = np.zeros_like(observations)
+        else:
+            # add noise
+            for i in range(3*n_dof):
+                state_signal = detrend(state[:, i])
+                signal_power = np.mean(state_signal ** 2)
+                signal_power_dB = 10 * np.log10(signal_power)
+                noise_dB = signal_power_dB - signal_snr
+                noise_watt = 10 ** (noise_dB/10)
+                noise = np.random.normal(0, np.sqrt(noise_watt), state.shape[0])
+                noise = detrend(noise)  # just in case
+                observations[:, i] = state[:, i] + noise
 
         # Store the data in LMDB
         for i in range(state.shape[0] // seq_len):
@@ -202,6 +217,8 @@ for phase in phases:
             keys.append(key)
             txn.put(u'states_{}'.format(key).encode('ascii'),
                     dumps_pyarrow(state[seq_len * i:seq_len * (i + 1), :]))
+            txn.put(u'observations_{}'.format(key).encode('ascii'),
+                    dumps_pyarrow(observations[seq_len * i:seq_len * (i + 1), :]))
             txn.put(u'force_{}'.format(key).encode('ascii'), dumps_pyarrow(force[seq_len * i: seq_len * (i + 1)]))
             txn.put(u'iteration_{}'.format(key).encode('ascii'), dumps_pyarrow(it))
             txn.put(u'tmin_{}'.format(key).encode('ascii'), dumps_pyarrow(i * seq_len))
