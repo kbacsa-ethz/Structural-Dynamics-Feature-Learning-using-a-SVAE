@@ -1,7 +1,17 @@
 # Import necessary libraries and modules
 from tqdm import tqdm
 import torch
+import torch.nn as nn
 import torch.optim as optim
+
+
+@torch.no_grad()
+def weight_reset(m: nn.Module):
+    # - check if the current module has reset_parameters & if it's callabed called it on m
+    reset_parameters = getattr(m, "reset_parameters", None)
+    if callable(reset_parameters):
+        m.reset_parameters()
+
 
 # Define the Train class, which is used for training the model
 class Train:
@@ -44,6 +54,10 @@ class Train:
         self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         self.epoch = checkpoint['epoch']
         print("Restoring training from epoch {}...".format(self.epoch))
+
+    def reset(self):
+        self.epoch = 0
+        self.model.apply(fn=weight_reset)
 
     def train(self, n_epochs, phases, datasets, dataloaders):
         best_val = 1e6
@@ -114,6 +128,34 @@ class Train:
             self.epoch += 1
             self.scheduler.step(self.epoch)
 
+    def test(self, dataset, dataloader):
+        self.model.eval()
+        running_dict = {}
+        for i, sample in tqdm(enumerate(dataloader),
+                              total=int(len(dataset) / dataloader.batch_size)):
+
+            # Get data for the current batch
+            data = self.get_data(sample)
+
+            # Calculate batch loss
+            batch_loss_dict = self.calculate_loss(data)
+
+            # Update running loss values
+            for loss_name, loss_value in batch_loss_dict.items():
+                if loss_name not in running_dict:
+                    if loss_name == 'CONF_MATRIX':
+                        running_dict[loss_name] = loss_value
+                    else:
+                        running_dict[loss_name] = loss_value.item() / dataloader.batch_size
+                else:
+                    if loss_name == 'CONF_MATRIX':
+                        running_dict[loss_name] += loss_value
+                    else:
+                        running_dict[loss_name] += loss_value.item() / dataloader.batch_size
+
+        return running_dict
+
+
 # Define TrainerAE class, which is a subclass of Train for autoencoders
 class TrainerAE(Train):
     def __init__(self,
@@ -150,6 +192,7 @@ class TrainerAE(Train):
         loss_dict['MSE_LOSS'] = loss
         return loss_dict
 
+
 # Define TrainerVAE class, a subclass of TrainerAE for Variational Autoencoders (VAE)
 class TrainerVAE(TrainerAE):
     def __init__(self,
@@ -174,9 +217,9 @@ class TrainerVAE(TrainerAE):
         loss_dict = {}
         mu, logvar = self.model.encode(inputs)
         if self.epoch < self.annealing_epochs:
-            beta = self.epoch / self.annealing_epochs
+            beta = 1e-3 * self.epoch / self.annealing_epochs
         else:
-            beta = 1.0
+            beta = 1e-3
 
         reconstruction = self.model.decode(self.model.reparameterize(mu, logvar))
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
@@ -185,6 +228,7 @@ class TrainerVAE(TrainerAE):
         loss_dict['MSE_LOSS'] = mse_loss
         loss_dict['KLD_LOSS'] = kld_loss
         return loss_dict
+
 
 # Define TrainerCVAE class, a subclass of TrainerVAE for Conditional Variational Autoencoders (CVAE)
 class TrainerCVAE(TrainerVAE):
@@ -239,6 +283,7 @@ class TrainerCVAE(TrainerVAE):
         loss_dict['MSE_LOSS'] = mse_loss
         loss_dict['KLD_LOSS'] = kld_loss
         return loss_dict
+
 
 # Define TrainerSVAE class, a subclass of TrainerVAE for Supervised Variational Autoencoders (SVAE)
 class TrainerSVAE(TrainerVAE):

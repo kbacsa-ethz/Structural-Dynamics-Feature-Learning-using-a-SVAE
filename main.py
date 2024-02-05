@@ -9,7 +9,10 @@ from datetime import datetime
 # Import custom modules
 from create_model import create_model
 from create_dataset import create_dataset
+from structure_dataset import StructureDataset
 from train import *
+from torch.utils.data import DataLoader, Subset
+from sklearn.model_selection import KFold
 
 
 # Define the main function, which serves as the entry point of the program
@@ -52,6 +55,8 @@ def main(cfg):
         cfg.batch_size,
         cfg.num_workers
     )
+
+    kfold = KFold(n_splits=cfg.n_splits, shuffle=True, random_state=42)
 
     # Create the machine learning model
     model, model_hyperparameters = create_model(
@@ -116,8 +121,29 @@ def main(cfg):
     else:
         raise NotImplementedError("Model type not implemented")
 
-    # Training loop
-    Trainer.train(cfg.n_epochs, ['train', 'val'], datasets, dataloaders)
+    # K-fold Cross Validation model evaluation
+    for fold, (train_ids, val_ids) in enumerate(kfold.split(datasets['train'])):
+        # Print
+        print(f'FOLD {fold}')
+        print('--------------------------------')
+
+        # generate subset based on indices
+
+        fold_datasets = {
+            'train': Subset(datasets['train'], train_ids),
+            'val': Subset(datasets['train'], val_ids),
+        }
+
+        fold_dataloaders = {
+            x: DataLoader(dataset=fold_datasets[x], batch_size=cfg.batch_size, shuffle=True if x == 'train' else False,
+                          num_workers=cfg.num_workers, pin_memory=True) for x in ['train', 'val']
+        }
+
+        # Training loop
+        Trainer.train(cfg.n_epochs, ['train', 'val'], fold_datasets, fold_dataloaders)
+        print("Results on fold {}".format(fold))
+        print(Trainer.test(datasets['test'], dataloaders['test']))
+        Trainer.reset()
 
     return 0
 
@@ -143,12 +169,13 @@ if __name__ == '__main__':
     parser.add_argument('--class-layers', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.2)
     parser.add_argument('--extractor', type=str, default='lstm')
-    parser.add_argument('--model-type', type=str, default='ae')
-    parser.add_argument('--target', type=str, default='accelerations')
+    parser.add_argument('--model-type', type=str, default='vae')
+    parser.add_argument('--target', type=str, default='accelerations-obs')
 
     # Training parameters
+    parser.add_argument('--n-splits', type=int, default=5)
     parser.add_argument('--batch-size', type=int, default=64)
-    parser.add_argument('--n-epochs', type=int, default=500)
+    parser.add_argument('--n-epochs', type=int, default=3)
     parser.add_argument('--num-workers', type=int, default=2)
     parser.add_argument('--learning-rate', type=float, default=1e-3)
     parser.add_argument('--class-weight', type=float, default=1e1)
