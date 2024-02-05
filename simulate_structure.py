@@ -60,7 +60,6 @@ band_length = int(2 / dt)
 
 n_iterations = {
     'train': n_samples,
-    'val': n_samples // 10,
     'test': n_samples // 10
 }
 
