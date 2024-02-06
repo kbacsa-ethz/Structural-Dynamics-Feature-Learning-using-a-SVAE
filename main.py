@@ -40,7 +40,7 @@ def main(cfg):
             os.makedirs(exp_path)
         now = datetime.now()
         dt_string = now.strftime("%d-%m-%Y_%H-%M-%S")
-        dt_string += '_' + cfg.model_type + '-' + str(cfg.batch_size)
+        dt_string += '_' + cfg.model_type + '-' + str(cfg.n_annealing)
         log_path = os.path.join(exp_path, dt_string)
 
         if not os.path.exists(log_path):
@@ -113,6 +113,19 @@ def main(cfg):
             cfg.n_classes,
             cfg.class_weight
         )
+    elif model_hyperparameters['model_type'] == 'cvae-continuous':
+        Trainer = TrainerCVAEContinuous(
+            model,
+            model_hyperparameters,
+            cfg.learning_rate,
+            cfg.learning_decay,
+            cfg.weight_decay,
+            save_path,
+            experiment,
+            cfg.n_annealing,
+            cfg.n_classes,
+            cfg.class_weight
+        )
     elif model_hyperparameters['model_type'] == 'svae':
         Trainer = TrainerSVAE(
             model,
@@ -149,7 +162,6 @@ def main(cfg):
         print('--------------------------------')
 
         # generate subset based on indices
-
         fold_datasets = {
             'train': Subset(datasets['train'], train_ids),
             'val': Subset(datasets['train'], val_ids),
@@ -190,7 +202,7 @@ if __name__ == '__main__':
     parser.add_argument('--class-layers', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.2)
     parser.add_argument('--extractor', type=str, default='lstm')
-    parser.add_argument('--model-type', type=str, default='vae')
+    parser.add_argument('--model-type', type=str, default='cvae-continuous')
     parser.add_argument('--target', type=str, default='accelerations-obs')
 
     # Training parameters

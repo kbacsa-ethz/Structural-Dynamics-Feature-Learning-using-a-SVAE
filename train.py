@@ -297,6 +297,67 @@ class TrainerCVAE(TrainerVAE):
         return loss_dict
 
 
+# Define TrainerCVAE class, a subclass of TrainerVAE for Conditional Variational Autoencoders (CVAE)
+class TrainerCVAEContinuous(TrainerVAE):
+    def __init__(self,
+                 model,
+                 model_hyper,
+                 learning_rate,
+                 learning_decay,
+                 weight_decay,
+                 save_path,
+                 comet_logger,
+                 annealing_epochs,
+                 n_classes,
+                 class_weight
+                 ):
+        super(TrainerCVAEContinuous, self).__init__(model,
+                                                    model_hyper,
+                                                    learning_rate,
+                                                    learning_decay,
+                                                    weight_decay,
+                                                    save_path,
+                                                    comet_logger,
+                                                    annealing_epochs
+                                                    )
+        self.n_classes = n_classes
+        self.class_weight = class_weight
+
+    def get_data(self, sample):
+        data = sample[self.model_hyper['target']].float()
+        labels = sample['flexibility'].float()
+        data = data.to(self.device)
+        labels = labels.to(self.device)
+        return data, labels
+
+    def calculate_loss(self, input_tuple):
+        inputs, labels = input_tuple
+        loss_dict = {}
+
+        # Convert labels to one-hot encoded format
+        seq_len = inputs.size(1)
+
+        print(inputs.size())
+        print(labels.size())
+        labels = labels.float().unsqueeze(1).unsqueeze(1).repeat((1, seq_len, 1))
+        print(labels.size())
+        inputs_labels = torch.cat([inputs, labels], -1)
+
+        mu, logvar = self.model.encode(inputs_labels)
+        if self.epoch < self.annealing_epochs:
+            beta = 1e-3 * self.epoch / self.annealing_epochs
+        else:
+            beta = 1e-3
+        z = self.model.reparameterize(mu, logvar)
+        reconstruction = self.model.decode(z, labels)
+        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
+        loss = mse_loss + kld_loss
+        loss_dict['TOTAL_LOSS'] = loss
+        loss_dict['MSE_LOSS'] = mse_loss
+        loss_dict['KLD_LOSS'] = kld_loss
+        return loss_dict
+
+
 # Define TrainerSVAE class, a subclass of TrainerVAE for Supervised Variational Autoencoders (SVAE)
 class TrainerSVAE(TrainerVAE):
     def __init__(self,
