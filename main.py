@@ -1,3 +1,5 @@
+from comet_ml import Experiment
+
 # Import necessary libraries and modules
 import os
 import json
@@ -9,10 +11,11 @@ from datetime import datetime
 # Import custom modules
 from create_model import create_model
 from create_dataset import create_dataset
-from structure_dataset import StructureDataset
 from train import *
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import KFold
+
+from api_keys import *
 
 
 # Define the main function, which serves as the entry point of the program
@@ -45,6 +48,9 @@ def main(cfg):
         with open(os.path.join(log_path, 'config.txt'), 'w') as f:
             config_dict = cfg.__dict__
             json.dump(config_dict, f, indent=2)
+        experiment = Experiment(project_name='Structural-Dynamics-Feature-Learning', api_key=COMET_API_KEY, disabled=not cfg.comet)
+        hyper_params = vars(cfg)
+        experiment.log_parameters(hyper_params)
 
     save_path = os.path.join(log_path, 'ckpt.pth')
     # Create datasets
@@ -81,6 +87,7 @@ def main(cfg):
             cfg.learning_decay,
             cfg.weight_decay,
             save_path,
+            experiment
         )
     elif model_hyperparameters['model_type'] == 'vae':
         Trainer = TrainerVAE(
@@ -90,6 +97,7 @@ def main(cfg):
             cfg.learning_decay,
             cfg.weight_decay,
             save_path,
+            experiment,
             cfg.n_annealing
         )
     elif model_hyperparameters['model_type'] == 'cvae':
@@ -100,6 +108,7 @@ def main(cfg):
             cfg.learning_decay,
             cfg.weight_decay,
             save_path,
+            experiment,
             cfg.n_annealing,
             cfg.n_classes,
             cfg.class_weight
@@ -112,6 +121,7 @@ def main(cfg):
             cfg.learning_decay,
             cfg.weight_decay,
             save_path,
+            experiment,
             cfg.n_annealing,
             cfg.n_classes,
             cfg.class_weight,
@@ -125,6 +135,7 @@ def main(cfg):
             cfg.learning_decay,
             cfg.weight_decay,
             save_path,
+            experiment,
             cfg.n_classes,
             torch.nn.BCEWithLogitsLoss(reduction='sum')
         )
@@ -193,6 +204,8 @@ if __name__ == '__main__':
     parser.add_argument('--regularization', type=float, default=1e-5)
     parser.add_argument('--weight-decay', type=float, default=1e-4)
     parser.add_argument('--learning-decay', type=float, default=0.984)
+
+    parser.add_argument('--comet', action='store_true')
 
     args = parser.parse_args()
     main(args)

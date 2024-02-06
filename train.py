@@ -22,6 +22,7 @@ class Train:
                  learning_decay,
                  weight_decay,
                  save_path,
+                 comet_logger
                  ):
         # Determine if a CUDA-capable GPU is available; otherwise, use CPU
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -39,6 +40,7 @@ class Train:
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
         self.scheduler = optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=self.learning_decay)
         self.save_path = save_path
+        self.comet_logger = comet_logger
 
     def get_data(self, sample):
         pass
@@ -108,8 +110,12 @@ class Train:
                         print('     Phase {}: confusion:'.format(phase))
                         confusion = loss_value / loss_value.sum(1)
                         print(confusion)
+                        self.comet_logger.log_confusion_matrix(matrix=confusion,
+                                                               file_name="{}-confusion-matrix.json".format(phase))
                     else:
                         print("     Phase {}: {}: {:.4E}".format(phase, loss_name, loss_value / len(datasets[phase])))
+                        self.comet_logger.log_metric("{}_{}".format(phase, loss_name),
+                                                     loss_value / len(datasets[phase]), step=self.epoch)
 
                 # Save the model if it performs better on the validation set
                 if phase == 'val':
@@ -165,6 +171,7 @@ class TrainerAE(Train):
                  learning_decay,
                  weight_decay,
                  save_path,
+                 comet_logger
                  ):
         super(TrainerAE, self).__init__(model,
                                         model_hyper,
@@ -172,6 +179,7 @@ class TrainerAE(Train):
                                         learning_decay,
                                         weight_decay,
                                         save_path,
+                                        comet_logger
                                         )
 
         # Define Mean Squared Error (MSE) loss for reconstruction
@@ -202,6 +210,7 @@ class TrainerVAE(TrainerAE):
                  learning_decay,
                  weight_decay,
                  save_path,
+                 comet_logger,
                  annealing_epochs
                  ):
         super(TrainerVAE, self).__init__(model,
@@ -210,6 +219,7 @@ class TrainerVAE(TrainerAE):
                                          learning_decay,
                                          weight_decay,
                                          save_path,
+                                         comet_logger
                                          )
         self.annealing_epochs = annealing_epochs
 
@@ -239,6 +249,7 @@ class TrainerCVAE(TrainerVAE):
                  learning_decay,
                  weight_decay,
                  save_path,
+                 comet_logger,
                  annealing_epochs,
                  n_classes,
                  class_weight
@@ -249,6 +260,7 @@ class TrainerCVAE(TrainerVAE):
                                           learning_decay,
                                           weight_decay,
                                           save_path,
+                                          comet_logger,
                                           annealing_epochs
                                           )
         self.n_classes = n_classes
@@ -272,9 +284,9 @@ class TrainerCVAE(TrainerVAE):
 
         mu, logvar = self.model.encode(inputs_labels)
         if self.epoch < self.annealing_epochs:
-            beta = self.epoch / self.annealing_epochs
+            beta = 1e-3 * self.epoch / self.annealing_epochs
         else:
-            beta = 1.0
+            beta = 1e-3
         z = self.model.reparameterize(mu, logvar)
         reconstruction = self.model.decode(z, labels)
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
@@ -294,6 +306,7 @@ class TrainerSVAE(TrainerVAE):
                  learning_decay,
                  weight_decay,
                  save_path,
+                 comet_logger,
                  annealing_epochs,
                  n_classes,
                  class_weight,
@@ -305,6 +318,7 @@ class TrainerSVAE(TrainerVAE):
                                           learning_decay,
                                           weight_decay,
                                           save_path,
+                                          comet_logger,
                                           annealing_epochs
                                           )
         self.n_classes = n_classes
@@ -327,9 +341,9 @@ class TrainerSVAE(TrainerVAE):
 
         mu, logvar = self.model.encode(inputs)
         if self.epoch < self.annealing_epochs:
-            beta = self.epoch / self.annealing_epochs
+            beta = 1e-3 * self.epoch / self.annealing_epochs
         else:
-            beta = 1.0
+            beta = 1e-3
         z = self.model.reparameterize(mu, logvar)
         reconstruction = self.model.decode(z)
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
@@ -368,6 +382,7 @@ class TrainerClassifier(Train):
                  learning_decay,
                  weight_decay,
                  save_path,
+                 comet_logger,
                  n_classes,
                  class_criterion
                  ):
@@ -377,6 +392,7 @@ class TrainerClassifier(Train):
                                                 learning_decay,
                                                 weight_decay,
                                                 save_path,
+                                                comet_logger,
                                                 )
         self.n_classes = n_classes
         self.class_criterion = class_criterion
