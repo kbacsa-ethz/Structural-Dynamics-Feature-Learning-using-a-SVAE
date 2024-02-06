@@ -200,9 +200,9 @@ if __name__ == '__main__':
     parser.add_argument('--n-classes', type=int, default=6)  # Do not set this value to 1
     parser.add_argument('--num-layers', type=int, default=2)
     parser.add_argument('--class-layers', type=int, default=1)
-    parser.add_argument('--dropout', type=float, default=0.2)
+    parser.add_argument('--dropout', type=float, default=0.)
     parser.add_argument('--extractor', type=str, default='lstm')
-    parser.add_argument('--model-type', type=str, default='cvae-continuous')
+    parser.add_argument('--model-type', type=str, default='ae')
     parser.add_argument('--target', type=str, default='accelerations-obs')
 
     # Training parameters

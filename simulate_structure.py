@@ -65,7 +65,7 @@ n_iterations = {
 
 abserr = 1e-8
 relerr = 1e-6
-signal_snr = 10  # [dB]
+signal_snr = 50  # [dB]
 
 # Construct linear system matrices
 n_classes = 6
@@ -105,9 +105,10 @@ alpha = ab[0]
 beta = ab[1]
 C = alpha * M + beta * K
 
-phases = ['train', 'val', 'test']
+phases = ['train', 'test']
 
 # Loop through different phases (train, val, test)
+states = []
 for phase in phases:
     print("Doing phase: {}".format(phase))
     iteration = 0
@@ -225,6 +226,9 @@ for phase in phases:
             txn.put(u'label_{}'.format(key).encode('ascii'), dumps_pyarrow(label))
             txn.put(u'flexibility_{}'.format(key).encode('ascii'), dumps_pyarrow(flexibility))
 
+            if phase == 'train':
+                states.append(state)
+
             if count % write_frequency == 0:
                 print("[%d]" % count)
                 txn.commit()
@@ -235,9 +239,18 @@ for phase in phases:
 
     # Finish iterating through the dataset
     txn.commit()
+
+    # calculate moments
+    if phase == 'train':
+        states = np.stack(states, axis=0)
+        states_mean = np.mean(states, axis=(0, 1))
+        states_std = np.std(states, axis=(0, 1))
+
     with db.begin(write=True) as txn:
         txn.put(b'__keys__', dumps_pyarrow(keys))
         txn.put(b'__len__', dumps_pyarrow(len(keys)))
+        txn.put(u'mean'.format().encode('ascii'), dumps_pyarrow(states_mean))
+        txn.put(u'std'.format().encode('ascii'), dumps_pyarrow(states_std))
 
     print("Flushing database ...")
     db.sync()
