@@ -178,7 +178,7 @@ def main(cfg):
         print(Trainer.test(datasets['test'], dataloaders['test']))
         Trainer.reset()
 
-        return 0
+    return 0
 
 
 # Entry point of the script
@@ -200,21 +200,21 @@ if __name__ == '__main__':
     parser.add_argument('--n-classes', type=int, default=6)  # Do not set this value to 1
     parser.add_argument('--num-layers', type=int, default=2)
     parser.add_argument('--class-layers', type=int, default=1)
-    parser.add_argument('--dropout', type=float, default=0.)
+    parser.add_argument('--dropout', type=float, default=0.05)
     parser.add_argument('--extractor', type=str, default='lstm')
-    parser.add_argument('--model-type', type=str, default='ae')
-    parser.add_argument('--target', type=str, default='accelerations-obs')
+    parser.add_argument('--model-type', type=str, default='svae')
+    parser.add_argument('--target', type=str, default='accelerations')
 
     # Training parameters
-    parser.add_argument('--n-splits', type=int, default=5)
+    parser.add_argument('--n-splits', type=int, default=3)
     parser.add_argument('--batch-size', type=int, default=256)
-    parser.add_argument('--n-epochs', type=int, default=500)
+    parser.add_argument('--n-epochs', type=int, default=300)
     parser.add_argument('--n-annealing', type=int, default=100)
     parser.add_argument('--num-workers', type=int, default=2)
     parser.add_argument('--learning-rate', type=float, default=1e-3)
     parser.add_argument('--class-weight', type=float, default=1e1)
     parser.add_argument('--regularization', type=float, default=1e-5)
-    parser.add_argument('--weight-decay', type=float, default=1e-4)
+    parser.add_argument('--weight-decay', type=float, default=1e-5)
     parser.add_argument('--learning-decay', type=float, default=0.984)
 
     parser.add_argument('--comet', action='store_true')

@@ -52,7 +52,7 @@ np.random.seed(42)
 # Sampling and simulation parameters
 fs = 100
 write_frequency = 20
-n_samples = 10
+n_samples = 50
 seq_len = 300
 dt = 1 / fs
 excitation_length = int(10 / dt)
@@ -65,7 +65,7 @@ n_iterations = {
 
 abserr = 1e-8
 relerr = 1e-6
-signal_snr = 50  # [dB]
+signal_snr = 10  # [dB]
 
 # Construct linear system matrices
 n_classes = 6

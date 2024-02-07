@@ -13,6 +13,17 @@ def weight_reset(m: nn.Module):
         m.reset_parameters()
 
 
+@torch.no_grad()
+def generate_noise(inputs):
+    SNR = 10
+    signal_power = torch.mean(inputs ** 2)
+    signal_power_dB = 10 * torch.log10(signal_power)
+    noise_dB = signal_power_dB - SNR
+    noise_watt = 10 ** (noise_dB / 10)
+    noise = torch.sqrt(noise_watt) * torch.randn(size=inputs.size()).to(inputs.device)
+    return noise
+
+
 # Define the Train class, which is used for training the model
 class Train:
     def __init__(self,
@@ -45,6 +56,9 @@ class Train:
     def get_data(self, sample):
         pass
 
+    def training_loss(self, inputs):
+        pass
+
     def calculate_loss(self, inputs):
         pass
 
@@ -63,20 +77,19 @@ class Train:
 
     def train(self, n_epochs, phases, datasets, dataloaders):
         best_val = 1e6
+        pbar = tqdm(initial=self.epoch, total=n_epochs)
         while self.epoch < n_epochs:
-            print('Epoch {}'.format(self.epoch))
-
+            #print('Epoch {}'.format(self.epoch))
             for phase in phases:
                 running_dict = {}
 
                 if phase == 'train':
-                    print("Training with learning rate: {}".format(self.scheduler.get_last_lr()[0]))
+                    #print("Training with learning rate: {}".format(self.scheduler.get_last_lr()[0]))
                     self.model.train()
                 else:
                     self.model.eval()
 
-                for i, sample in tqdm(enumerate(dataloaders[phase]),
-                                      total=int(len(datasets[phase]) / dataloaders[phase].batch_size)):
+                for i, sample in enumerate(dataloaders[phase]):
 
                     # Get data for the current batch
                     data = self.get_data(sample)
@@ -85,7 +98,7 @@ class Train:
                         self.optimizer.zero_grad()
 
                     # Calculate batch loss
-                    batch_loss_dict = self.calculate_loss(data)
+                    batch_loss_dict = self.training_loss(data)
 
                     if phase == 'train':
                         batch_loss_dict['TOTAL_LOSS'].backward()
@@ -107,13 +120,13 @@ class Train:
                 # Print and log loss values for the current phase
                 for loss_name, loss_value in running_dict.items():
                     if loss_name == 'CONF_MATRIX':
-                        print('     Phase {}: confusion:'.format(phase))
+                        #print('     Phase {}: confusion:'.format(phase))
                         confusion = loss_value / loss_value.sum(1)
-                        print(confusion)
+                        #print(confusion)
                         self.comet_logger.log_confusion_matrix(matrix=confusion,
                                                                file_name="{}-confusion-matrix.json".format(phase))
                     else:
-                        print("     Phase {}: {}: {:.4E}".format(phase, loss_name, loss_value / len(datasets[phase])))
+                        #print("     Phase {}: {}: {:.4E}".format(phase, loss_name, loss_value / len(datasets[phase])))
                         self.comet_logger.log_metric("{}_{}".format(phase, loss_name),
                                                      loss_value / len(datasets[phase]), step=self.epoch)
 
@@ -132,13 +145,14 @@ class Train:
 
             # Increment the epoch count and update the learning rate
             self.epoch += 1
+            pbar.update(1)
             self.scheduler.step(self.epoch)
+        pbar.close()
 
     def test(self, dataset, dataloader):
         self.model.eval()
         running_dict = {}
-        for i, sample in tqdm(enumerate(dataloader),
-                              total=int(len(dataset) / dataloader.batch_size)):
+        for i, sample in enumerate(dataloader):
 
             # Get data for the current batch
             data = self.get_data(sample)
@@ -193,12 +207,15 @@ class TrainerAE(Train):
 
     def calculate_loss(self, inputs):
         loss_dict = {}
-        latent_features = self.model.encode(inputs)
+        latent_features = self.model.encode(inputs + generate_noise(inputs).to(self.device))
         reconstruction = self.model.decode(latent_features)
         loss = self.criterion(reconstruction, inputs)
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = loss
         return loss_dict
+
+    def training_loss(self, inputs):
+        return self.calculate_loss(inputs)
 
 
 # Define TrainerVAE class, a subclass of TrainerAE for Variational Autoencoders (VAE)
@@ -223,16 +240,35 @@ class TrainerVAE(TrainerAE):
                                          )
         self.annealing_epochs = annealing_epochs
 
-    def calculate_loss(self, inputs):
+    def training_loss(self, inputs):
         loss_dict = {}
-        mu, logvar = self.model.encode(inputs)
+        mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
         if self.epoch < self.annealing_epochs:
-            beta = 1e-3 * self.epoch / self.annealing_epochs
+            beta = 1e2 * self.epoch / self.annealing_epochs
         else:
-            beta = 1e-3
+            beta = 1e2
 
         reconstruction = self.model.decode(self.model.reparameterize(mu, logvar))
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
+        loss = mse_loss + kld_loss
+        loss_dict['TOTAL_LOSS'] = loss
+        loss_dict['MSE_LOSS'] = mse_loss
+        loss_dict['KLD_LOSS'] = kld_loss
+        return loss_dict
+
+    def calculate_loss(self, inputs):
+        loss_dict = {}
+        n_iterations = 20
+        self.model.eval()
+        mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
+
+        reconstructions = []
+        for iteration in range(n_iterations):
+            reconstruction = self.model.decode(self.model.reparameterize(mu, logvar))
+            reconstructions.append(reconstruction)
+        reconstruction = torch.stack(reconstructions, dim=0).mean(dim=0)
+
+        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
@@ -273,23 +309,48 @@ class TrainerCVAE(TrainerVAE):
         labels = labels.to(self.device)
         return data, labels
 
-    def calculate_loss(self, input_tuple):
+    def training_loss(self, input_tuple):
         inputs, labels = input_tuple
         loss_dict = {}
 
         # Convert labels to one-hot encoded format
         seq_len = inputs.size(1)
         labels = torch.nn.functional.one_hot(labels.long(), self.n_classes).float().unsqueeze(1).repeat((1, seq_len, 1))
-        inputs_labels = torch.cat([inputs, labels], -1)
+        inputs_labels = torch.cat([inputs + generate_noise(inputs).to(self.device), labels], -1)
 
         mu, logvar = self.model.encode(inputs_labels)
         if self.epoch < self.annealing_epochs:
-            beta = 1e-3 * self.epoch / self.annealing_epochs
+            beta = 1e2 * self.epoch / self.annealing_epochs
         else:
-            beta = 1e-3
+            beta = 1e2
         z = self.model.reparameterize(mu, logvar)
         reconstruction = self.model.decode(z, labels)
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
+        loss = mse_loss + kld_loss
+        loss_dict['TOTAL_LOSS'] = loss
+        loss_dict['MSE_LOSS'] = mse_loss
+        loss_dict['KLD_LOSS'] = kld_loss
+        return loss_dict
+
+    def calculate_loss(self, input_tuple):
+        loss_dict = {}
+        n_iterations = 20
+        inputs, labels = input_tuple
+
+        # Convert labels to one-hot encoded format
+        seq_len = inputs.size(1)
+
+        labels = torch.nn.functional.one_hot(labels.long(), self.n_classes).float().unsqueeze(1).repeat((1, seq_len, 1))
+        inputs_labels = torch.cat([inputs + generate_noise(inputs).to(self.device), labels], -1)
+        mu, logvar = self.model.encode(inputs_labels)
+
+        reconstructions = []
+        for iteration in range(n_iterations):
+            reconstruction = self.model.decode(self.model.reparameterize(mu, logvar), labels)
+            reconstructions.append(reconstruction)
+        reconstruction = torch.stack(reconstructions, dim=0).mean(dim=0)
+
+        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
@@ -330,27 +391,48 @@ class TrainerCVAEContinuous(TrainerVAE):
         labels = labels.to(self.device)
         return data, labels
 
-    def calculate_loss(self, input_tuple):
+    def training_loss(self, input_tuple):
         inputs, labels = input_tuple
         loss_dict = {}
 
         # Convert labels to one-hot encoded format
         seq_len = inputs.size(1)
 
-        print(inputs.size())
-        print(labels.size())
         labels = labels.float().unsqueeze(1).unsqueeze(1).repeat((1, seq_len, 1))
-        print(labels.size())
-        inputs_labels = torch.cat([inputs, labels], -1)
-
+        inputs_labels = torch.cat([inputs + generate_noise(inputs).to(self.device), labels], -1)
         mu, logvar = self.model.encode(inputs_labels)
         if self.epoch < self.annealing_epochs:
-            beta = 1e-3 * self.epoch / self.annealing_epochs
+            beta = 1e2 * self.epoch / self.annealing_epochs
         else:
-            beta = 1e-3
+            beta = 1e2
         z = self.model.reparameterize(mu, logvar)
         reconstruction = self.model.decode(z, labels)
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
+        loss = mse_loss + kld_loss
+        loss_dict['TOTAL_LOSS'] = loss
+        loss_dict['MSE_LOSS'] = mse_loss
+        loss_dict['KLD_LOSS'] = kld_loss
+        return loss_dict
+
+    def calculate_loss(self, input_tuple):
+        loss_dict = {}
+        n_iterations = 20
+        inputs, labels = input_tuple
+
+        # Convert labels to one-hot encoded format
+        seq_len = inputs.size(1)
+
+        labels = labels.float().unsqueeze(1).unsqueeze(1).repeat((1, seq_len, 1))
+        inputs_labels = torch.cat([inputs + generate_noise(inputs).to(self.device), labels], -1)
+        mu, logvar = self.model.encode(inputs_labels)
+
+        reconstructions = []
+        for iteration in range(n_iterations):
+            reconstruction = self.model.decode(self.model.reparameterize(mu, logvar), labels)
+            reconstructions.append(reconstruction)
+        reconstruction = torch.stack(reconstructions, dim=0).mean(dim=0)
+
+        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
@@ -393,18 +475,18 @@ class TrainerSVAE(TrainerVAE):
         labels = labels.to(self.device)
         return data, labels
 
-    def calculate_loss(self, input_tuple):
+    def training_loss(self, input_tuple):
         inputs, labels = input_tuple
         loss_dict = {}
 
         # Convert labels to one-hot encoded format
         labels = torch.nn.functional.one_hot(labels.long(), self.n_classes).float()
 
-        mu, logvar = self.model.encode(inputs)
+        mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
         if self.epoch < self.annealing_epochs:
-            beta = 1e-3 * self.epoch / self.annealing_epochs
+            beta = 1e2 * self.epoch / self.annealing_epochs
         else:
-            beta = 1e-3
+            beta = 1e2
         z = self.model.reparameterize(mu, logvar)
         reconstruction = self.model.decode(z)
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
@@ -431,6 +513,25 @@ class TrainerSVAE(TrainerVAE):
         loss_dict['CLASS_LOSS'] = class_loss
         loss_dict['ACCURACY'] = accuracy
         loss_dict['CONF_MATRIX'] = confusion_matrix
+        return loss_dict
+
+    def calculate_loss(self, input_tuple):
+        loss_dict = {}
+        n_iterations = 20
+        inputs, labels = input_tuple
+
+        mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
+        reconstructions = []
+        for iteration in range(n_iterations):
+            reconstruction = self.model.decode(self.model.reparameterize(mu, logvar))
+            reconstructions.append(reconstruction)
+        reconstruction = torch.stack(reconstructions, dim=0).mean(dim=0)
+
+        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
+        loss = mse_loss + kld_loss
+        loss_dict['TOTAL_LOSS'] = loss
+        loss_dict['MSE_LOSS'] = mse_loss
+        loss_dict['KLD_LOSS'] = kld_loss
         return loss_dict
 
 
