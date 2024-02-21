@@ -199,7 +199,7 @@ def main(cfg):
         result_dict[key] = value / num_dicts
 
     print('--------------------------------')
-    print('CROSS-VALIDATION RESULTS:')
+    print('CROSS-VALIDATION RESULTS FOR {}:'.format(cfg.model_type))
     print(result_dict)
 
     return 0
