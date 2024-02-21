@@ -38,7 +38,7 @@ class Train:
         # Determine if a CUDA-capable GPU is available; otherwise, use CPU
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # For debugging purposes, you can switch to CPU
-        # device = torch.device('cpu')
+        #device = torch.device('cpu')
         print("Using device:", device)
 
         self.device = device
@@ -172,6 +172,10 @@ class Train:
                         running_dict[loss_name] += loss_value
                     else:
                         running_dict[loss_name] += loss_value.item() / dataloader.batch_size
+
+        # normalize
+        for loss_name, loss_value in running_dict.items():
+            running_dict[loss_name] = loss_value / len(dataset)
 
         return running_dict
 
