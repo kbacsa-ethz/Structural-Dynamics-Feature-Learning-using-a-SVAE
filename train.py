@@ -126,7 +126,7 @@ class Train:
                         self.comet_logger.log_confusion_matrix(matrix=confusion,
                                                                file_name="{}-confusion-matrix.json".format(phase))
                     else:
-                        #print("     Phase {}: {}: {:.4E}".format(phase, loss_name, loss_value / len(datasets[phase])))
+                        #print("     Phase {}: {}: {:.4E}".format(phase, loss_name, loss_value / (len(datasets[phase]))))
                         self.comet_logger.log_metric("{}_{}".format(phase, loss_name),
                                                      loss_value / len(datasets[phase]), step=self.epoch)
 

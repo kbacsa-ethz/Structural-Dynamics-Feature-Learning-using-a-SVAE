@@ -156,6 +156,7 @@ def main(cfg):
         raise NotImplementedError("Model type not implemented")
 
     # K-fold Cross Validation model evaluation
+    testing_dicts = []
     for fold, (train_ids, val_ids) in enumerate(kfold.split(datasets['train'])):
         # Print
         print(f'FOLD {fold}')
@@ -175,8 +176,31 @@ def main(cfg):
         # Training loop
         Trainer.train(cfg.n_epochs, ['train', 'val'], fold_datasets, fold_dataloaders)
         print("Results on fold {}".format(fold))
-        print(Trainer.test(datasets['test'], dataloaders['test']))
+        testing_dict = Trainer.test(datasets['test'], dataloaders['test'])
+        print(testing_dict)
+        testing_dicts.append(testing_dict)
         Trainer.reset()
+
+    # Print final crossvalidation result:
+    result_dict = {}
+    for testing_dict in testing_dicts:
+        # Loop through each key in the dictionary
+        for key, value in testing_dict.items():
+            # If the key is not in the result_dict, add it with the current value
+            if key not in result_dict:
+                result_dict[key] = value
+            else:
+                # If the key is already in the result_dict, add the current value to it
+                result_dict[key] += value
+
+    # Calculate the average for each key
+    num_dicts = len(testing_dicts)
+    for key, value in result_dict.items():
+        result_dict[key] = value / num_dicts
+
+    print('--------------------------------')
+    print('CROSS-VALIDATION RESULTS:')
+    print(result_dict)
 
     return 0
 
@@ -202,13 +226,13 @@ if __name__ == '__main__':
     parser.add_argument('--class-layers', type=int, default=1)
     parser.add_argument('--dropout', type=float, default=0.05)
     parser.add_argument('--extractor', type=str, default='lstm')
-    parser.add_argument('--model-type', type=str, default='svae')
+    parser.add_argument('--model-type', type=str, default='vae')
     parser.add_argument('--target', type=str, default='accelerations')
 
     # Training parameters
     parser.add_argument('--n-splits', type=int, default=3)
-    parser.add_argument('--batch-size', type=int, default=256)
-    parser.add_argument('--n-epochs', type=int, default=300)
+    parser.add_argument('--batch-size', type=int, default=2)
+    parser.add_argument('--n-epochs', type=int, default=1)
     parser.add_argument('--n-annealing', type=int, default=100)
     parser.add_argument('--num-workers', type=int, default=2)
     parser.add_argument('--learning-rate', type=float, default=1e-3)
