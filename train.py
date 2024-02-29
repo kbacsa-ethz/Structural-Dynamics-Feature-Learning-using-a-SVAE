@@ -419,9 +419,12 @@ class TrainerCVAEContinuous(TrainerVAE):
         reconstruction = self.model.decode(mu, labels)
 
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
+
+        relative_error = (torch.abs(reconstruction - inputs) / inputs).mean()
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
+        loss_dict['RELATIVE_ERROR'] = relative_error
         loss_dict['KLD_LOSS'] = kld_loss
         return loss_dict
 
