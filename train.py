@@ -254,12 +254,10 @@ class TrainerVAE(TrainerAE):
 
         reconstruction = self.model.decode(self.model.reparameterize(mu, logvar))
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
-        relative_error = (torch.abs(reconstruction - inputs) / inputs).mean()
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
         loss_dict['KLD_LOSS'] = kld_loss
-        loss_dict['RELATIVE_ERROR'] = relative_error
         return loss_dict
 
     def calculate_loss(self, inputs):
@@ -269,10 +267,12 @@ class TrainerVAE(TrainerAE):
         reconstruction = self.model.decode(mu)
 
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
+        relative_error = (torch.abs(reconstruction - inputs) / inputs).mean()
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
         loss_dict['KLD_LOSS'] = kld_loss
+        loss_dict['RELATIVE_ERROR'] = relative_error
         return loss_dict
 
 
@@ -481,7 +481,6 @@ class TrainerSVAE(TrainerVAE):
         z = self.model.reparameterize(mu, logvar)
         reconstruction = self.model.decode(z)
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
-        relative_error = (torch.abs(reconstruction - inputs) / inputs).mean()
 
         # Classification
         classifier_inputs = torch.cat([mu, logvar], dim=-1)
@@ -502,7 +501,6 @@ class TrainerSVAE(TrainerVAE):
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
         loss_dict['KLD_LOSS'] = kld_loss
-        loss_dict['RELATIVE_ERROR'] = relative_error
         loss_dict['CLASS_LOSS'] = class_loss
         loss_dict['ACCURACY'] = accuracy
         loss_dict['CONF_MATRIX'] = confusion_matrix
@@ -514,12 +512,14 @@ class TrainerSVAE(TrainerVAE):
 
         mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
         reconstruction = self.model.decode(mu)
+        relative_error = (torch.abs(reconstruction - inputs) / inputs).mean()
 
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
         loss_dict['KLD_LOSS'] = kld_loss
+        loss_dict['RELATIVE_ERROR'] = relative_error
         return loss_dict
 
 
