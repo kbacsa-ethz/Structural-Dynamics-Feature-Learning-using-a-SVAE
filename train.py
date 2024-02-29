@@ -163,12 +163,12 @@ class Train:
             # Update running loss values
             for loss_name, loss_value in batch_loss_dict.items():
                 if loss_name not in running_dict:
-                    if loss_name == 'CONF_MATRIX':
+                    if loss_name == 'CONF_MATRIX' or loss_value == 'RELATIVE_ERROR':
                         running_dict[loss_name] = loss_value
                     else:
                         running_dict[loss_name] = loss_value.item() / dataloader.batch_size
                 else:
-                    if loss_name == 'CONF_MATRIX':
+                    if loss_name == 'CONF_MATRIX' or loss_value == 'RELATIVE_ERROR':
                         running_dict[loss_name] += loss_value
                     else:
                         running_dict[loss_name] += loss_value.item() / dataloader.batch_size
