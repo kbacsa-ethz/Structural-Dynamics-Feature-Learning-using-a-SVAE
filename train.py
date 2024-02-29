@@ -416,7 +416,7 @@ class TrainerCVAEContinuous(TrainerVAE):
         labels = labels.float().unsqueeze(1).unsqueeze(1).repeat((1, seq_len, 1))
         inputs_labels = torch.cat([inputs + generate_noise(inputs).to(self.device), labels], -1)
         mu, logvar = self.model.encode(inputs_labels)
-        reconstruction = self.model.decode(mu)
+        reconstruction = self.model.decode(mu, labels)
 
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
         loss = mse_loss + kld_loss
