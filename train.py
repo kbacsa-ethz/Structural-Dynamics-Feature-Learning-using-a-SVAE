@@ -262,15 +262,9 @@ class TrainerVAE(TrainerAE):
 
     def calculate_loss(self, inputs):
         loss_dict = {}
-        n_iterations = 20
         self.model.eval()
         mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
-
-        reconstructions = []
-        for iteration in range(n_iterations):
-            reconstruction = self.model.decode(self.model.reparameterize(mu, logvar))
-            reconstructions.append(reconstruction)
-        reconstruction = torch.stack(reconstructions, dim=0).mean(dim=0)
+        reconstruction = self.model.decode(mu)
 
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
         loss = mse_loss + kld_loss
@@ -338,7 +332,6 @@ class TrainerCVAE(TrainerVAE):
 
     def calculate_loss(self, input_tuple):
         loss_dict = {}
-        n_iterations = 20
         inputs, labels = input_tuple
 
         # Convert labels to one-hot encoded format
@@ -347,12 +340,7 @@ class TrainerCVAE(TrainerVAE):
         labels = torch.nn.functional.one_hot(labels.long(), self.n_classes).float().unsqueeze(1).repeat((1, seq_len, 1))
         inputs_labels = torch.cat([inputs + generate_noise(inputs).to(self.device), labels], -1)
         mu, logvar = self.model.encode(inputs_labels)
-
-        reconstructions = []
-        for iteration in range(n_iterations):
-            reconstruction = self.model.decode(self.model.reparameterize(mu, logvar), labels)
-            reconstructions.append(reconstruction)
-        reconstruction = torch.stack(reconstructions, dim=0).mean(dim=0)
+        reconstruction = self.model.decode(mu)
 
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
         loss = mse_loss + kld_loss
@@ -420,7 +408,6 @@ class TrainerCVAEContinuous(TrainerVAE):
 
     def calculate_loss(self, input_tuple):
         loss_dict = {}
-        n_iterations = 20
         inputs, labels = input_tuple
 
         # Convert labels to one-hot encoded format
@@ -429,12 +416,7 @@ class TrainerCVAEContinuous(TrainerVAE):
         labels = labels.float().unsqueeze(1).unsqueeze(1).repeat((1, seq_len, 1))
         inputs_labels = torch.cat([inputs + generate_noise(inputs).to(self.device), labels], -1)
         mu, logvar = self.model.encode(inputs_labels)
-
-        reconstructions = []
-        for iteration in range(n_iterations):
-            reconstruction = self.model.decode(self.model.reparameterize(mu, logvar), labels)
-            reconstructions.append(reconstruction)
-        reconstruction = torch.stack(reconstructions, dim=0).mean(dim=0)
+        reconstruction = self.model.decode(mu)
 
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
         loss = mse_loss + kld_loss
@@ -521,15 +503,10 @@ class TrainerSVAE(TrainerVAE):
 
     def calculate_loss(self, input_tuple):
         loss_dict = {}
-        n_iterations = 20
         inputs, labels = input_tuple
 
         mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
-        reconstructions = []
-        for iteration in range(n_iterations):
-            reconstruction = self.model.decode(self.model.reparameterize(mu, logvar))
-            reconstructions.append(reconstruction)
-        reconstruction = torch.stack(reconstructions, dim=0).mean(dim=0)
+        reconstruction = self.model.decode(mu)
 
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
         loss = mse_loss + kld_loss
