@@ -98,6 +98,7 @@ def main(cfg):
             cfg.weight_decay,
             save_path,
             experiment,
+            cfg.kld_weight,
             cfg.n_annealing
         )
     elif model_hyperparameters['model_type'] == 'cvae':
@@ -109,6 +110,7 @@ def main(cfg):
             cfg.weight_decay,
             save_path,
             experiment,
+            cfg.kld_weight,
             cfg.n_annealing,
             cfg.n_classes,
             cfg.class_weight
@@ -122,6 +124,7 @@ def main(cfg):
             cfg.weight_decay,
             save_path,
             experiment,
+            cfg.kld_weight,
             cfg.n_annealing,
             cfg.n_classes,
             cfg.class_weight
@@ -135,6 +138,7 @@ def main(cfg):
             cfg.weight_decay,
             save_path,
             experiment,
+            cfg.kld_weight,
             cfg.n_annealing,
             cfg.n_classes,
             cfg.class_weight,
@@ -234,8 +238,9 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--n-epochs', type=int, default=1)
     parser.add_argument('--n-annealing', type=int, default=100)
-    parser.add_argument('--num-workers', type=int, default=2)
+    parser.add_argument('--num-workers', type=int, default=0)
     parser.add_argument('--learning-rate', type=float, default=1e-3)
+    parser.add_argument('--kld-weight', type=float, default=1e0)
     parser.add_argument('--class-weight', type=float, default=1e1)
     parser.add_argument('--regularization', type=float, default=1e-5)
     parser.add_argument('--weight-decay', type=float, default=1e-5)

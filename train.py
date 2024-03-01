@@ -232,6 +232,7 @@ class TrainerVAE(TrainerAE):
                  weight_decay,
                  save_path,
                  comet_logger,
+                 kld_weight,
                  annealing_epochs
                  ):
         super(TrainerVAE, self).__init__(model,
@@ -242,15 +243,16 @@ class TrainerVAE(TrainerAE):
                                          save_path,
                                          comet_logger
                                          )
+        self.kld_weight = kld_weight
         self.annealing_epochs = annealing_epochs
 
     def training_loss(self, inputs):
         loss_dict = {}
         mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
         if self.epoch < self.annealing_epochs:
-            beta = 1e2 * self.epoch / self.annealing_epochs
+            beta = self.kld_weight * self.epoch / self.annealing_epochs
         else:
-            beta = 1e2
+            beta = self.kld_weight
 
         reconstruction = self.model.decode(self.model.reparameterize(mu, logvar))
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
@@ -266,7 +268,7 @@ class TrainerVAE(TrainerAE):
         mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
         reconstruction = self.model.decode(mu)
 
-        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
+        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, self.kld_weight)
         relative_error = (torch.abs(reconstruction - inputs / inputs)).mean()
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
@@ -286,6 +288,7 @@ class TrainerCVAE(TrainerVAE):
                  weight_decay,
                  save_path,
                  comet_logger,
+                 kld_weight,
                  annealing_epochs,
                  n_classes,
                  class_weight
@@ -297,6 +300,7 @@ class TrainerCVAE(TrainerVAE):
                                           weight_decay,
                                           save_path,
                                           comet_logger,
+                                          kld_weight,
                                           annealing_epochs
                                           )
         self.n_classes = n_classes
@@ -320,9 +324,9 @@ class TrainerCVAE(TrainerVAE):
 
         mu, logvar = self.model.encode(inputs_labels)
         if self.epoch < self.annealing_epochs:
-            beta = 1e2 * self.epoch / self.annealing_epochs
+            beta = self.kld_weight * self.epoch / self.annealing_epochs
         else:
-            beta = 1e2
+            beta = self.kld_weight
         z = self.model.reparameterize(mu, logvar)
         reconstruction = self.model.decode(z, labels)
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
@@ -344,7 +348,7 @@ class TrainerCVAE(TrainerVAE):
         mu, logvar = self.model.encode(inputs_labels)
         reconstruction = self.model.decode(mu)
 
-        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
+        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, self.kld_weight)
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
@@ -362,6 +366,7 @@ class TrainerCVAEContinuous(TrainerVAE):
                  weight_decay,
                  save_path,
                  comet_logger,
+                 kld_weight,
                  annealing_epochs,
                  n_classes,
                  class_weight
@@ -373,6 +378,7 @@ class TrainerCVAEContinuous(TrainerVAE):
                                                     weight_decay,
                                                     save_path,
                                                     comet_logger,
+                                                    kld_weight,
                                                     annealing_epochs
                                                     )
         self.n_classes = n_classes
@@ -396,9 +402,9 @@ class TrainerCVAEContinuous(TrainerVAE):
         inputs_labels = torch.cat([inputs + generate_noise(inputs).to(self.device), labels], -1)
         mu, logvar = self.model.encode(inputs_labels)
         if self.epoch < self.annealing_epochs:
-            beta = 1e2 * self.epoch / self.annealing_epochs
+            beta = self.kld_weight * self.epoch / self.annealing_epochs
         else:
-            beta = 1e2
+            beta = self.kld_weight
         z = self.model.reparameterize(mu, logvar)
         reconstruction = self.model.decode(z, labels)
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
@@ -420,7 +426,7 @@ class TrainerCVAEContinuous(TrainerVAE):
         mu, logvar = self.model.encode(inputs_labels)
         reconstruction = self.model.decode(mu, labels)
 
-        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
+        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, self.kld_weight)
 
         relative_error = (torch.abs(reconstruction - inputs / inputs)).mean()
         loss = mse_loss + kld_loss
@@ -442,6 +448,7 @@ class TrainerSVAE(TrainerVAE):
                  save_path,
                  comet_logger,
                  annealing_epochs,
+                 kld_weight,
                  n_classes,
                  class_weight,
                  class_criterion
@@ -453,6 +460,7 @@ class TrainerSVAE(TrainerVAE):
                                           weight_decay,
                                           save_path,
                                           comet_logger,
+                                          kld_weight,
                                           annealing_epochs
                                           )
         self.n_classes = n_classes
@@ -475,9 +483,9 @@ class TrainerSVAE(TrainerVAE):
 
         mu, logvar = self.model.encode(inputs + generate_noise(inputs).to(self.device))
         if self.epoch < self.annealing_epochs:
-            beta = 1e2 * self.epoch / self.annealing_epochs
+            beta = self.kld_weight * self.epoch / self.annealing_epochs
         else:
-            beta = 1e2
+            beta = self.kld_weight
         z = self.model.reparameterize(mu, logvar)
         reconstruction = self.model.decode(z)
         mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, beta)
@@ -514,7 +522,7 @@ class TrainerSVAE(TrainerVAE):
         reconstruction = self.model.decode(mu)
         relative_error = (torch.abs(reconstruction - inputs / inputs)).mean()
 
-        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, 1e2)
+        mse_loss, kld_loss = self.model.loss_function(reconstruction, inputs, mu, logvar, self.criterion, self.kld_weight)
         loss = mse_loss + kld_loss
         loss_dict['TOTAL_LOSS'] = loss
         loss_dict['MSE_LOSS'] = mse_loss
