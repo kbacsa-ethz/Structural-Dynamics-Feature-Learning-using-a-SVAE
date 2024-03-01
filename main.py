@@ -234,7 +234,7 @@ if __name__ == '__main__':
     parser.add_argument('--target', type=str, default='accelerations')
 
     # Training parameters
-    parser.add_argument('--n-splits', type=int, default=3)
+    parser.add_argument('--n-splits', type=int, default=10)
     parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--n-epochs', type=int, default=1)
     parser.add_argument('--n-annealing', type=int, default=100)
