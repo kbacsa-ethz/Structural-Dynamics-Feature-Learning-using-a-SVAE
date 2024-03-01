@@ -175,7 +175,7 @@ class Train:
 
         # normalize
         for loss_name, loss_value in running_dict.items():
-            running_dict[loss_name] = loss_value * dataset.batch_size
+            running_dict[loss_name] = loss_value * dataloader.batch_size
 
         return running_dict
 
