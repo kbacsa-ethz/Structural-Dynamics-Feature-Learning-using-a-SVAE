@@ -3,6 +3,7 @@ import lmdb
 import random
 import numpy as np
 import pyarrow as pa
+from scipy.signal import detrend
 from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 
@@ -51,7 +52,7 @@ np.random.seed(42)
 # Sampling and simulation parameters
 fs = 100
 write_frequency = 20
-n_samples = 10
+n_samples = 50
 seq_len = 300
 dt = 1 / fs
 excitation_length = int(10 / dt)
@@ -59,12 +60,12 @@ band_length = int(2 / dt)
 
 n_iterations = {
     'train': n_samples,
-    'val': n_samples // 10,
     'test': n_samples // 10
 }
 
 abserr = 1e-8
 relerr = 1e-6
+signal_snr = 10  # [dB]
 
 # Construct linear system matrices
 n_classes = 6
@@ -104,9 +105,10 @@ alpha = ab[0]
 beta = ab[1]
 C = alpha * M + beta * K
 
-phases = ['train', 'val', 'test']
+phases = ['train', 'test']
 
 # Loop through different phases (train, val, test)
+states = []
 for phase in phases:
     print("Doing phase: {}".format(phase))
     iteration = 0
@@ -193,8 +195,21 @@ for phase in phases:
         label = damage_class
 
         # Negative mining: set state to zeros with a low probability
+        observations = state.copy()
         if random.random() < 0.05:
             state = np.zeros_like(state)
+            observations = np.zeros_like(observations)
+        else:
+            # add noise
+            for i in range(3*n_dof):
+                state_signal = detrend(state[:, i])
+                signal_power = np.mean(state_signal ** 2)
+                signal_power_dB = 10 * np.log10(signal_power)
+                noise_dB = signal_power_dB - signal_snr
+                noise_watt = 10 ** (noise_dB/10)
+                noise = np.random.normal(0, np.sqrt(noise_watt), state.shape[0])
+                noise = detrend(noise)  # just in case
+                observations[:, i] = state[:, i] + noise
 
         # Store the data in LMDB
         for i in range(state.shape[0] // seq_len):
@@ -202,12 +217,17 @@ for phase in phases:
             keys.append(key)
             txn.put(u'states_{}'.format(key).encode('ascii'),
                     dumps_pyarrow(state[seq_len * i:seq_len * (i + 1), :]))
+            txn.put(u'observations_{}'.format(key).encode('ascii'),
+                    dumps_pyarrow(observations[seq_len * i:seq_len * (i + 1), :]))
             txn.put(u'force_{}'.format(key).encode('ascii'), dumps_pyarrow(force[seq_len * i: seq_len * (i + 1)]))
             txn.put(u'iteration_{}'.format(key).encode('ascii'), dumps_pyarrow(it))
             txn.put(u'tmin_{}'.format(key).encode('ascii'), dumps_pyarrow(i * seq_len))
             txn.put(u'tmax_{}'.format(key).encode('ascii'), dumps_pyarrow((i + 1) * seq_len))
             txn.put(u'label_{}'.format(key).encode('ascii'), dumps_pyarrow(label))
             txn.put(u'flexibility_{}'.format(key).encode('ascii'), dumps_pyarrow(flexibility))
+
+            if phase == 'train':
+                states.append(state)
 
             if count % write_frequency == 0:
                 print("[%d]" % count)
@@ -219,9 +239,18 @@ for phase in phases:
 
     # Finish iterating through the dataset
     txn.commit()
+
+    # calculate moments
+    if phase == 'train':
+        states = np.stack(states, axis=0)
+        states_mean = np.mean(states, axis=(0, 1))
+        states_std = np.std(states, axis=(0, 1))
+
     with db.begin(write=True) as txn:
         txn.put(b'__keys__', dumps_pyarrow(keys))
         txn.put(b'__len__', dumps_pyarrow(len(keys)))
+        txn.put(u'mean'.format().encode('ascii'), dumps_pyarrow(states_mean))
+        txn.put(u'std'.format().encode('ascii'), dumps_pyarrow(states_std))
 
     print("Flushing database ...")
     db.sync()

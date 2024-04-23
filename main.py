@@ -1,3 +1,5 @@
+from comet_ml import Experiment
+
 # Import necessary libraries and modules
 import os
 import json
@@ -10,6 +12,10 @@ from datetime import datetime
 from create_model import create_model
 from create_dataset import create_dataset
 from train import *
+from torch.utils.data import DataLoader, Subset
+from sklearn.model_selection import KFold
+
+from api_keys import *
 
 
 # Define the main function, which serves as the entry point of the program
@@ -34,7 +40,7 @@ def main(cfg):
             os.makedirs(exp_path)
         now = datetime.now()
         dt_string = now.strftime("%d-%m-%Y_%H-%M-%S")
-        dt_string += '_' + cfg.model_type + '-' + str(cfg.batch_size)
+        dt_string += '_' + cfg.model_type + '-' + str(cfg.n_annealing)
         log_path = os.path.join(exp_path, dt_string)
 
         if not os.path.exists(log_path):
@@ -42,9 +48,11 @@ def main(cfg):
         with open(os.path.join(log_path, 'config.txt'), 'w') as f:
             config_dict = cfg.__dict__
             json.dump(config_dict, f, indent=2)
+        experiment = Experiment(project_name='Structural-Dynamics-Feature-Learning', api_key=COMET_API_KEY, disabled=not cfg.comet)
+        hyper_params = vars(cfg)
+        experiment.log_parameters(hyper_params)
 
     save_path = os.path.join(log_path, 'ckpt.pth')
-
     # Create datasets
     datasets, dataloaders = create_dataset(
         cfg.data_path,
@@ -52,6 +60,8 @@ def main(cfg):
         cfg.batch_size,
         cfg.num_workers
     )
+
+    kfold = KFold(n_splits=cfg.n_splits, shuffle=True, random_state=42)
 
     # Create the machine learning model
     model, model_hyperparameters = create_model(
@@ -77,6 +87,7 @@ def main(cfg):
             cfg.learning_decay,
             cfg.weight_decay,
             save_path,
+            experiment
         )
     elif model_hyperparameters['model_type'] == 'vae':
         Trainer = TrainerVAE(
@@ -86,7 +97,9 @@ def main(cfg):
             cfg.learning_decay,
             cfg.weight_decay,
             save_path,
-            cfg.n_epochs // 5
+            experiment,
+            cfg.kld_weight,
+            cfg.n_annealing
         )
     elif model_hyperparameters['model_type'] == 'cvae':
         Trainer = TrainerCVAE(
@@ -96,7 +109,23 @@ def main(cfg):
             cfg.learning_decay,
             cfg.weight_decay,
             save_path,
-            cfg.n_epochs // 5,
+            experiment,
+            cfg.kld_weight,
+            cfg.n_annealing,
+            cfg.n_classes,
+            cfg.class_weight
+        )
+    elif model_hyperparameters['model_type'] == 'cvae-continuous':
+        Trainer = TrainerCVAEContinuous(
+            model,
+            model_hyperparameters,
+            cfg.learning_rate,
+            cfg.learning_decay,
+            cfg.weight_decay,
+            save_path,
+            experiment,
+            cfg.kld_weight,
+            cfg.n_annealing,
             cfg.n_classes,
             cfg.class_weight
         )
@@ -108,16 +137,74 @@ def main(cfg):
             cfg.learning_decay,
             cfg.weight_decay,
             save_path,
-            cfg.n_epochs // 5,
+            experiment,
+            cfg.kld_weight,
+            cfg.n_annealing,
             cfg.n_classes,
             cfg.class_weight,
+            torch.nn.BCEWithLogitsLoss(reduction='sum')
+        )
+    elif model_hyperparameters['model_type'] == 'classifier':
+        Trainer = TrainerClassifier(
+            model,
+            model_hyperparameters,
+            cfg.learning_rate,
+            cfg.learning_decay,
+            cfg.weight_decay,
+            save_path,
+            experiment,
+            cfg.n_classes,
             torch.nn.BCEWithLogitsLoss(reduction='sum')
         )
     else:
         raise NotImplementedError("Model type not implemented")
 
-    # Training loop
-    Trainer.train(cfg.n_epochs, ['train', 'val'], datasets, dataloaders)
+    # K-fold Cross Validation model evaluation
+    testing_dicts = []
+    for fold, (train_ids, val_ids) in enumerate(kfold.split(datasets['train'])):
+        # Print
+        print(f'FOLD {fold}')
+        print('--------------------------------')
+
+        # generate subset based on indices
+        fold_datasets = {
+            'train': Subset(datasets['train'], train_ids),
+            'val': Subset(datasets['train'], val_ids),
+        }
+
+        fold_dataloaders = {
+            x: DataLoader(dataset=fold_datasets[x], batch_size=cfg.batch_size, shuffle=True if x == 'train' else False,
+                          num_workers=cfg.num_workers, pin_memory=True) for x in ['train', 'val']
+        }
+
+        # Training loop
+        Trainer.train(cfg.n_epochs, ['train', 'val'], fold_datasets, fold_dataloaders)
+        print("Results on fold {}".format(fold))
+        testing_dict = Trainer.test(datasets['test'], dataloaders['test'])
+        print(testing_dict)
+        testing_dicts.append(testing_dict)
+        Trainer.reset()
+
+    # Print final crossvalidation result:
+    result_dict = {}
+    for testing_dict in testing_dicts:
+        # Loop through each key in the dictionary
+        for key, value in testing_dict.items():
+            # If the key is not in the result_dict, add it with the current value
+            if key not in result_dict:
+                result_dict[key] = value
+            else:
+                # If the key is already in the result_dict, add the current value to it
+                result_dict[key] += value
+
+    # Calculate the average for each key
+    num_dicts = len(testing_dicts)
+    for key, value in result_dict.items():
+        result_dict[key] = value / num_dicts
+
+    print('--------------------------------')
+    print('CROSS-VALIDATION RESULTS FOR {}:'.format(cfg.model_type.upper()))
+    print(result_dict)
 
     return 0
 
@@ -141,20 +228,25 @@ if __name__ == '__main__':
     parser.add_argument('--n-classes', type=int, default=6)  # Do not set this value to 1
     parser.add_argument('--num-layers', type=int, default=2)
     parser.add_argument('--class-layers', type=int, default=1)
-    parser.add_argument('--dropout', type=float, default=0.2)
+    parser.add_argument('--dropout', type=float, default=0.05)
     parser.add_argument('--extractor', type=str, default='lstm')
-    parser.add_argument('--model-type', type=str, default='ae')
+    parser.add_argument('--model-type', type=str, default='vae')
     parser.add_argument('--target', type=str, default='accelerations')
 
     # Training parameters
-    parser.add_argument('--batch-size', type=int, default=64)
-    parser.add_argument('--n-epochs', type=int, default=500)
-    parser.add_argument('--num-workers', type=int, default=2)
+    parser.add_argument('--n-splits', type=int, default=10)
+    parser.add_argument('--batch-size', type=int, default=2)
+    parser.add_argument('--n-epochs', type=int, default=1)
+    parser.add_argument('--n-annealing', type=int, default=100)
+    parser.add_argument('--num-workers', type=int, default=0)
     parser.add_argument('--learning-rate', type=float, default=1e-3)
+    parser.add_argument('--kld-weight', type=float, default=1e0)
     parser.add_argument('--class-weight', type=float, default=1e1)
     parser.add_argument('--regularization', type=float, default=1e-5)
-    parser.add_argument('--weight-decay', type=float, default=1e-4)
+    parser.add_argument('--weight-decay', type=float, default=1e-5)
     parser.add_argument('--learning-decay', type=float, default=0.984)
+
+    parser.add_argument('--comet', action='store_true')
 
     args = parser.parse_args()
     main(args)

@@ -34,6 +34,8 @@ class StructureDataset(BaseDataset):
             # Retrieve the length of the dataset and keys from the LMDB database
             self.length = pa.deserialize(txn.get(b'__len__'))
             self.keys = pa.deserialize(txn.get(b'__keys__'))
+            self.mean = pa.deserialize(txn.get('mean'.encode('ascii'))).astype(np.float32)
+            self.std = pa.deserialize(txn.get('std'.encode('ascii'))).astype(np.float32)
 
         self.transforms = transforms
         self.n_dof = n_dof
@@ -47,6 +49,9 @@ class StructureDataset(BaseDataset):
             force = pa.deserialize(txn.get('force_{}'.format(self.keys[index]).encode('ascii'))).astype(np.float32)
             label = pa.deserialize(txn.get('label_{}'.format(self.keys[index]).encode('ascii')))
             flexibility = pa.deserialize(txn.get('flexibility_{}'.format(self.keys[index]).encode('ascii')))
+
+        # normalization
+        states = (states - self.mean) / self.std
 
         # Organize fetched data into a dictionary
         output = {

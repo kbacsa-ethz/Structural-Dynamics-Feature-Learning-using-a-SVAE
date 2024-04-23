@@ -16,7 +16,7 @@ def model_from_name(name, seq_len, batch_size):
     dropout = float(parameters[6])
     target = parameters[7]
 
-    if model_type == 'cvae' or model_type == 'svae' or model_type == 'classifier':
+    if model_type == 'cvae' or model_type == 'svae' or model_type == 'classifier' or model_type == 'cvae-continuous':
         n_classes = int(parameters[8])
 
     # Define the feature extractor based on the extractor_type
@@ -24,6 +24,9 @@ def model_from_name(name, seq_len, batch_size):
         if model_type == 'cvae':
             encoder = LSTMSingleOutput(in_channels + n_classes, latent_dim, num_layers, dropout, seq_len, batch_size)
             decoder = LSTMSingleOutput(latent_dim + n_classes, in_channels, num_layers, dropout, seq_len, batch_size)
+        elif model_type == 'cvae-continuous':
+            encoder = LSTMSingleOutput(in_channels + 1, latent_dim, num_layers, dropout, seq_len, batch_size)
+            decoder = LSTMSingleOutput(latent_dim + 1, in_channels, num_layers, dropout, seq_len, batch_size)
         else:
             encoder = LSTMSingleOutput(in_channels, latent_dim, num_layers, dropout, seq_len, batch_size)
             decoder = LSTMSingleOutput(latent_dim, in_channels, num_layers, dropout, seq_len, batch_size)
@@ -41,10 +44,12 @@ def model_from_name(name, seq_len, batch_size):
         from_name = AE(encoder, decoder, latent_dim, seq_len)
     elif model_type == 'vae':
         from_name = VAE(encoder, decoder, latent_dim, seq_len)
-    elif model_type == 'cvae':
+    elif model_type == 'cvae' or model_type == 'cvae-continuous':
         from_name = CVAE(encoder, decoder, latent_dim, n_classes, seq_len)
     elif model_type == 'svae':
         from_name = SVAE(encoder, decoder, latent_dim, class_layers, n_classes, seq_len)
+    elif model_type == 'classifier':
+        from_name = Classifier(encoder, latent_dim, class_layers, n_classes, seq_len)
     else:
         raise NotImplemented
 

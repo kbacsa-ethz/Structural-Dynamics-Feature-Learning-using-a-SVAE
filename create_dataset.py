@@ -11,11 +11,10 @@ def create_dataset(
         num_workers
 ):
     # dataset
-    phases = ['train', 'val', 'test']
+    phases = ['train', 'test']
 
     datasets = {
         "train": StructureDataset(os.path.join(data_path, "train_dataset"), n_dof),
-        "val": StructureDataset(os.path.join(data_path, "val_dataset"), n_dof),
         "test": StructureDataset(os.path.join(data_path, "test_dataset"), n_dof)
     }
 
